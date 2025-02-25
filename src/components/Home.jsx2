@@ -1,0 +1,91 @@
+import "../index.css";
+import { React, useEffect, useState } from "react";
+import Wheel from "./Wheel";
+import Confetti from "./Confetti";
+
+const API_URL = "http://localhost:5000/projects"; // Change as per your API
+const DAYS_THRESHOLD = 90;
+
+function Home() {
+  const [spinning, setSpinning] = useState(false);
+  const [winners, setWinners] = useState([]);
+  const [openModal, setOpenModal] = useState(false);
+  const [items, setItems] = useState([]);
+  
+  useEffect(() => {
+    fetch(API_URL)
+      .then((response) => response.json())
+      .then((data) => setItems(data))
+      .catch((error) => console.error("Error fetching projects:", error));
+  }, []);
+
+  const isOlderThan90Days = (lastPicked) => {
+    if (!lastPicked) return true;
+    const lastPickedDate = new Date(lastPicked);
+    const today = new Date();
+    const diffDays = (today - lastPickedDate) / (1000 * 60 * 60 * 24);
+    return diffDays > DAYS_THRESHOLD;
+  };
+
+  const findValidWinner = () => {
+    const validItems = items.filter((item) => isOlderThan90Days(item.lastPicked));
+    if (validItems.length === 0) return null;
+    return validItems[Math.floor(Math.random() * validItems.length)];
+  };
+
+  const selectResultEventHandler = () => {
+    if (spinning) return;
+
+    let winner = null;
+    let attempts = 0;
+    
+    while (!winner && attempts < items.length) {
+      winner = findValidWinner();
+      attempts++;
+    }
+
+    if (!winner) {
+      alert("No valid winners found! Try again later.");
+      return;
+    }
+
+    setSpinning(true);
+    setTimeout(() => {
+      setSpinning(false);
+      setWinners([...winners, winner.name]);
+      updateWinnerTimestamp(winner);
+      setOpenModal(true);
+    }, 3000);
+  };
+
+  const updateWinnerTimestamp = (winner) => {
+    const updatedWinner = { ...winner, lastPicked: new Date().toISOString() };
+
+    fetch(`${API_URL}/${winner.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedWinner),
+    })
+      .then(() => {
+        setItems(items.map((item) => (item.id === winner.id ? updatedWinner : item)));
+      })
+      .catch((error) => console.error("Error updating timestamp:", error));
+  };
+
+  return (
+    <section className="relative min-h-screen flex justify-center items-center bg-gray-200">
+      <Wheel items={items.map((item) => item.name)} onChange={selectResultEventHandler} spinning={spinning} />
+      {openModal && (
+        <div className="p-10 bg-green-400 rounded-md text-center">
+          <h1 className="text-xl font-bold text-red-600">Winner: {winners[winners.length - 1]}</h1>
+          <button onClick={() => setOpenModal(false)} className="mt-4 p-2 bg-green-700 text-white rounded">
+            Close
+          </button>
+        </div>
+      )}
+      {openModal && <Confetti />}
+    </section>
+  );
+}
+
+export default Home;
